@@ -1,0 +1,705 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>給料日カウントダウン 予算・支出管理</title>
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
+  
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'Noto Sans JP', 'sans-serif'],
+          }
+        }
+      }
+    }
+  </script>
+
+  <style>
+    /* iOSでの入力時自動ズームを防ぐためベースフォントを16pxに統一 */
+    input, select, textarea {
+      font-size: 16px !important;
+    }
+    input[type=number]::-webkit-inner-spin-button,
+    input[type=number]::-webkit-outer-spin-button {
+      -webkit-appearance: none;
+      margin: 0;
+    }
+    input[type=number] {
+      -moz-appearance: textfield;
+    }
+  </style>
+</head>
+
+<body class="bg-slate-100 text-slate-800 font-sans min-h-screen antialiased flex flex-col pb-24">
+
+  <!-- ヘッダー -->
+  <header class="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-xs px-4 py-3">
+    <div class="flex items-center justify-between">
+      <div class="flex items-center space-x-2.5">
+        <div class="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center text-white shadow-sm">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z"></path>
+          </svg>
+        </div>
+        <h1 class="text-sm font-bold text-slate-900 leading-tight">給料日カウントダウン</h1>
+      </div>
+      <button id="btn-reset" type="button" class="inline-flex items-center px-2.5 py-1.5 border border-slate-300 text-xs font-medium rounded-lg text-slate-700 bg-white active:bg-slate-50 transition">
+        初期値に戻す
+      </button>
+    </div>
+  </header>
+
+  <main class="flex-1 w-full max-w-lg mx-auto p-4 space-y-4">
+
+    <!-- 1. 基本情報カード -->
+    <section class="bg-white rounded-xl p-4 border border-slate-200 shadow-sm space-y-3">
+      <div class="flex items-center justify-between border-b border-slate-100 pb-2">
+        <h2 class="text-xs font-bold text-slate-700 uppercase tracking-wider">基本設定</h2>
+        <span class="text-[10px] bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded font-medium">小の月・月末自動判定</span>
+      </div>
+
+      <div class="grid grid-cols-2 gap-2">
+        <div class="p-2.5 bg-slate-50 rounded-lg border border-slate-100">
+          <div class="text-[11px] text-slate-500">今日の日付</div>
+          <div id="disp-today" class="text-sm font-bold text-slate-900 mt-0.5 font-mono">--/--/--</div>
+        </div>
+        <div class="p-2.5 bg-slate-50 rounded-lg border border-slate-100">
+          <label for="input-payday" class="text-[11px] text-slate-500 block">給料日 (1〜31日)</label>
+          <div class="flex items-center mt-0.5">
+            <input type="number" id="input-payday" inputmode="numeric" min="1" max="31" class="w-full bg-white px-2 py-1 font-bold text-indigo-600 rounded border border-slate-200 text-right pr-1" value="31">
+            <span class="text-xs text-slate-500 ml-1">日</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="p-3 bg-rose-50 rounded-lg border border-rose-100 flex items-center justify-between">
+        <div>
+          <div class="text-xs font-medium text-rose-700">給料日までの残日数</div>
+          <div id="disp-target-date" class="text-[10px] text-rose-500 mt-0.5">次回: --</div>
+        </div>
+        <div class="flex items-baseline space-x-1">
+          <span id="disp-remain-days" class="text-2xl font-black text-rose-600 font-mono">0</span>
+          <span class="text-xs font-bold text-rose-600">日</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- 2. 手元資金入力カード -->
+    <section class="bg-gradient-to-br from-slate-900 to-indigo-950 text-white rounded-xl p-4 shadow-sm space-y-2">
+      <label for="input-savings" class="text-xs font-medium text-slate-300 block">
+        手元総資金（口座残高・総貯蓄額）
+      </label>
+      <div class="relative flex items-center">
+        <span class="absolute left-3 text-slate-400 font-mono font-semibold">¥</span>
+        <input type="number" id="input-savings" inputmode="numeric" class="w-full bg-white/10 px-3 py-2 pl-7 font-bold text-white rounded-lg border border-white/20 focus:outline-none focus:ring-2 focus:ring-indigo-400 font-mono text-right" value="200000">
+      </div>
+    </section>
+
+    <!-- 3. 変動費セクション -->
+    <section class="bg-white rounded-xl p-4 border border-slate-200 shadow-sm space-y-3">
+      <div class="flex items-center justify-between border-b border-slate-100 pb-2">
+        <div>
+          <h2 class="text-xs font-bold text-slate-700 uppercase">変動費（単価 × 日数・回数）</h2>
+          <div class="text-[10px] text-slate-400">残日数: <span class="sync-remain-days font-bold text-slate-600">0</span> 日</div>
+        </div>
+        <div class="text-right">
+          <span class="text-[10px] text-slate-400">小計</span>
+          <div id="disp-variable-subtotal" class="text-sm font-bold text-emerald-600 font-mono">¥0</div>
+        </div>
+      </div>
+
+      <div class="space-y-3 pt-1">
+        <!-- 食費（日別） -->
+        <div class="p-2.5 rounded-lg bg-slate-50 border border-slate-100 space-y-1.5">
+          <div class="flex justify-between items-center">
+            <span class="text-xs font-semibold text-slate-700">食費（日別計算）</span>
+            <span id="calc-food-day" class="text-xs font-mono font-bold text-slate-900">¥0</span>
+          </div>
+          <div class="flex items-center justify-end space-x-1.5">
+            <span class="text-[11px] text-slate-500">1日単価:</span>
+            <input type="number" id="v-food-day" inputmode="numeric" class="w-24 px-2 py-1 text-right rounded border border-slate-200 font-mono bg-white" value="1000">
+            <span class="text-xs text-slate-500">円</span>
+          </div>
+        </div>
+
+        <!-- 食費（週別） -->
+        <div class="p-2.5 rounded-lg bg-slate-50 border border-slate-100 space-y-1.5">
+          <div class="flex justify-between items-center">
+            <span class="text-xs font-semibold text-slate-700">食費（週別計算）</span>
+            <span id="calc-food-week" class="text-xs font-mono font-bold text-slate-900">¥0</span>
+          </div>
+          <div class="flex items-center justify-end space-x-1.5">
+            <span class="text-[11px] text-slate-500">1週単価:</span>
+            <input type="number" id="v-food-week" inputmode="numeric" class="w-24 px-2 py-1 text-right rounded border border-slate-200 font-mono bg-white" value="0">
+            <span class="text-xs text-slate-500">円</span>
+          </div>
+        </div>
+
+        <!-- 交際費 -->
+        <div class="p-2.5 rounded-lg bg-slate-50 border border-slate-100 space-y-1.5">
+          <div class="flex justify-between items-center">
+            <span class="text-xs font-semibold text-slate-700">交際費</span>
+            <span id="calc-ent-cost" class="text-xs font-mono font-bold text-slate-900">¥0</span>
+          </div>
+          <div class="flex items-center justify-end space-x-1">
+            <input type="number" id="v-ent-cost" inputmode="numeric" class="w-20 px-2 py-1 text-right rounded border border-slate-200 font-mono bg-white" value="3000">
+            <span class="text-[11px] text-slate-400">円 ×</span>
+            <input type="number" id="v-ent-count" inputmode="numeric" class="w-14 px-2 py-1 text-right rounded border border-slate-200 font-mono bg-white" value="0">
+            <span class="text-[11px] text-slate-400">回</span>
+          </div>
+        </div>
+
+        <!-- 交通費① -->
+        <div class="p-2.5 rounded-lg bg-slate-50 border border-slate-100 space-y-1.5">
+          <div class="flex justify-between items-center">
+            <span class="text-xs font-semibold text-slate-700">交通費①（定期外・電車等）</span>
+            <span id="calc-trans1-cost" class="text-xs font-mono font-bold text-slate-900">¥0</span>
+          </div>
+          <div class="flex items-center justify-end space-x-1">
+            <input type="number" id="v-trans1-cost" inputmode="numeric" class="w-20 px-2 py-1 text-right rounded border border-slate-200 font-mono bg-white" value="600">
+            <span class="text-[11px] text-slate-400">円 ×</span>
+            <input type="number" id="v-trans1-count" inputmode="numeric" class="w-14 px-2 py-1 text-right rounded border border-slate-200 font-mono bg-white" value="0">
+            <span class="text-[11px] text-slate-400">回</span>
+          </div>
+        </div>
+
+        <!-- 交通費② -->
+        <div class="p-2.5 rounded-lg bg-slate-50 border border-slate-100 space-y-1.5">
+          <div class="flex justify-between items-center">
+            <span class="text-xs font-semibold text-slate-700">交通費②（バス等）</span>
+            <span id="calc-trans2-cost" class="text-xs font-mono font-bold text-slate-900">¥0</span>
+          </div>
+          <div class="flex items-center justify-end space-x-1">
+            <input type="number" id="v-trans2-cost" inputmode="numeric" class="w-20 px-2 py-1 text-right rounded border border-slate-200 font-mono bg-white" value="230">
+            <span class="text-[11px] text-slate-400">円 ×</span>
+            <input type="number" id="v-trans2-count" inputmode="numeric" class="w-14 px-2 py-1 text-right rounded border border-slate-200 font-mono bg-white" value="0">
+            <span class="text-[11px] text-slate-400">回</span>
+          </div>
+        </div>
+
+        <!-- 交通費③ -->
+        <div class="p-2.5 rounded-lg bg-slate-50 border border-slate-100 space-y-1.5">
+          <div class="flex justify-between items-center">
+            <span class="text-xs font-semibold text-slate-700">交通費③（遠出等）</span>
+            <span id="calc-trans3-cost" class="text-xs font-mono font-bold text-slate-900">¥0</span>
+          </div>
+          <div class="flex items-center justify-end space-x-1">
+            <input type="number" id="v-trans3-cost" inputmode="numeric" class="w-20 px-2 py-1 text-right rounded border border-slate-200 font-mono bg-white" value="0">
+            <span class="text-[11px] text-slate-400">円 ×</span>
+            <input type="number" id="v-trans3-count" inputmode="numeric" class="w-14 px-2 py-1 text-right rounded border border-slate-200 font-mono bg-white" value="0">
+            <span class="text-[11px] text-slate-400">回</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 4. 固定費セクション（スマホ向けカードリスト型） -->
+    <section class="bg-white rounded-xl p-4 border border-slate-200 shadow-sm space-y-3">
+      <div class="flex items-center justify-between border-b border-slate-100 pb-2">
+        <div>
+          <h2 class="text-xs font-bold text-slate-700 uppercase">固定費（期日自動判定）</h2>
+          <div class="text-[10px] text-slate-400">次回給料日までの支払分のみ計上</div>
+        </div>
+        <div class="text-right">
+          <span class="text-[10px] text-slate-400">期間内小計</span>
+          <div id="disp-fixed-subtotal" class="text-sm font-bold text-blue-600 font-mono">¥0</div>
+        </div>
+      </div>
+
+      <div id="fixed-container" class="space-y-2">
+        <!-- 動的カード挿入 -->
+      </div>
+
+      <button id="btn-add-fixed" type="button" class="w-full py-2 text-xs font-semibold text-blue-600 bg-blue-50 active:bg-blue-100 rounded-lg transition border border-blue-100">
+        ＋ 固定費項目を追加
+      </button>
+    </section>
+
+    <!-- 5. 都度予定・特別費セクション -->
+    <section class="bg-white rounded-xl p-4 border border-slate-200 shadow-sm space-y-3">
+      <div class="flex items-center justify-between border-b border-slate-100 pb-2">
+        <div>
+          <h2 class="text-xs font-bold text-slate-700 uppercase">都度予定・特別費</h2>
+          <div class="text-[10px] text-slate-400">特別支出・買い物予定</div>
+        </div>
+        <div class="text-right">
+          <span class="text-[10px] text-slate-400">計</span>
+          <div id="disp-special-subtotal" class="text-sm font-bold text-purple-600 font-mono">¥0</div>
+        </div>
+      </div>
+
+      <div class="p-2.5 bg-purple-50/50 rounded-lg border border-purple-100">
+        <label class="flex items-center space-x-2 cursor-pointer text-xs text-slate-700">
+          <input type="checkbox" id="check-exclude-credit" class="rounded text-purple-600 focus:ring-purple-500 w-4 h-4 border-slate-300" checked>
+          <span>クレカ決済分を手元支出から除外</span>
+        </label>
+      </div>
+
+      <div id="special-container" class="space-y-2">
+        <!-- 動的カード挿入 -->
+      </div>
+
+      <button id="btn-add-special" type="button" class="w-full py-2 text-xs font-semibold text-purple-600 bg-purple-50 active:bg-purple-100 rounded-lg transition border border-purple-100">
+        ＋ 予定項目を追加
+      </button>
+    </section>
+
+    <!-- 6. グラフカード -->
+    <section class="bg-white rounded-xl p-4 border border-slate-200 shadow-sm space-y-3">
+      <div class="flex items-center justify-between border-b border-slate-100 pb-2">
+        <h2 class="text-xs font-bold text-slate-700 uppercase">支出割合</h2>
+        <span class="text-xs text-slate-500 font-mono" id="chart-total-text">計 ¥0</span>
+      </div>
+      <div class="relative flex items-center justify-center" style="height: 180px;">
+        <canvas id="expenseChart"></canvas>
+      </div>
+      <div class="grid grid-cols-3 gap-1.5 text-center text-[11px] pt-1">
+        <div class="p-1.5 bg-emerald-50 rounded">
+          <div class="text-emerald-700 font-semibold">変動費</div>
+          <div id="ratio-var" class="font-mono font-bold text-slate-700">0%</div>
+        </div>
+        <div class="p-1.5 bg-blue-50 rounded">
+          <div class="text-blue-700 font-semibold">固定費</div>
+          <div id="ratio-fix" class="font-mono font-bold text-slate-700">0%</div>
+        </div>
+        <div class="p-1.5 bg-purple-50 rounded">
+          <div class="text-purple-700 font-semibold">都度予定</div>
+          <div id="ratio-plan" class="font-mono font-bold text-slate-700">0%</div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- スマホ用 固定下部ステータスバー -->
+  <footer class="fixed bottom-0 left-0 right-0 bg-slate-900 text-white border-t border-slate-800 p-3 z-40 shadow-xl">
+    <div class="max-w-lg mx-auto flex items-center justify-between">
+      <div>
+        <div class="flex items-center space-x-1.5 mb-0.5">
+          <span class="text-[10px] text-slate-400">残る自由費</span>
+          <span id="badge-status" class="text-[9px] px-1.5 py-0.2 rounded-full font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">安全圏</span>
+        </div>
+        <div id="disp-free-budget" class="text-2xl font-black font-mono tracking-tight text-emerald-400 leading-none">¥0</div>
+      </div>
+      <div class="text-right">
+        <div class="text-[10px] text-slate-400">支出予定合計</div>
+        <div id="disp-total-expense" class="text-sm font-bold font-mono text-rose-400">¥0</div>
+      </div>
+    </div>
+  </footer>
+
+  <script>
+    const DEFAULT_DATA = {
+      payday: 31,
+      savings: 200000,
+      excludeCredit: true,
+      variable: {
+        foodDayRate: 1000,
+        foodWeekRate: 0,
+        entertainmentRate: 3000,
+        entertainmentCount: 0,
+        trans1Rate: 600,
+        trans1Count: 0,
+        trans2Rate: 230,
+        trans2Count: 0,
+        trans3Rate: 0,
+        trans3Count: 0
+      },
+      fixedList: [
+        { id: 1, name: '家賃', amount: 10000, dueDay: 1 },
+        { id: 2, name: '水道光熱費', amount: 10000, dueDay: 1 },
+        { id: 3, name: '通信費（スマホ・回線）', amount: 10000, dueDay: 1 },
+        { id: 4, name: 'サブスク', amount: 0, dueDay: 1 },
+        { id: 5, name: 'クレジットカード引落', amount: 0, dueDay: 10 }
+      ],
+      specialList: [
+        { id: 1, name: '美容品', amount: 0, paymentMethod: 'cash' },
+        { id: 2, name: '衣服', amount: 0, paymentMethod: 'credit' },
+        { id: 3, name: '医療費・交際費予備枠', amount: 0, paymentMethod: 'cash' },
+        { id: 4, name: 'しがく', amount: 0, paymentMethod: 'cash' },
+        { id: 5, name: '保険費', amount: 5000, paymentMethod: 'cash' }
+      ]
+    };
+
+    let appData = JSON.parse(JSON.stringify(DEFAULT_DATA));
+    let expenseChart = null;
+
+    function loadSavedData() {
+      try {
+        const saved = localStorage.getItem('budget_app_data_v4');
+        if (saved) {
+          appData = Object.assign({}, DEFAULT_DATA, JSON.parse(saved));
+        }
+      } catch (e) {
+        console.warn('LocalStorage load error', e);
+      }
+    }
+
+    function persistData() {
+      try {
+        localStorage.setItem('budget_app_data_v4', JSON.stringify(appData));
+      } catch (e) {
+        console.warn('LocalStorage save error', e);
+      }
+    }
+
+    function calculateDates() {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+
+      const y = today.getFullYear();
+      const m = today.getMonth();
+      const inputDay = parseInt(appData.payday) || 31;
+
+      const thisMonthLastDay = new Date(y, m + 1, 0).getDate();
+      const thisMonthTargetDay = Math.min(inputDay, thisMonthLastDay);
+      let targetDate = new Date(y, m, thisMonthTargetDay);
+
+      if (today.getTime() > targetDate.getTime()) {
+        const nextMonthLastDay = new Date(y, m + 2, 0).getDate();
+        const nextMonthTargetDay = Math.min(inputDay, nextMonthLastDay);
+        targetDate = new Date(y, m + 1, nextMonthTargetDay);
+      }
+
+      const diffMs = targetDate.getTime() - today.getTime();
+      const remainDays = Math.max(0, Math.round(diffMs / (1000 * 60 * 60 * 24)));
+
+      return { today, targetDate, remainDays };
+    }
+
+    function isDueWithinCycle(dueDay, today, targetDate) {
+      const y = today.getFullYear();
+      const m = today.getMonth();
+      const thisMonthLastDay = new Date(y, m + 1, 0).getDate();
+      
+      const safeDueDay = Math.min(dueDay, thisMonthLastDay);
+      let candidate = new Date(y, m, safeDueDay);
+
+      if (candidate.getTime() < today.getTime()) {
+        const nextMonthLastDay = new Date(y, m + 2, 0).getDate();
+        candidate = new Date(y, m + 1, Math.min(dueDay, nextMonthLastDay));
+      }
+
+      return candidate.getTime() >= today.getTime() && candidate.getTime() <= targetDate.getTime();
+    }
+
+    function renderApp() {
+      const { today, targetDate, remainDays } = calculateDates();
+
+      const todayFormatted = `${today.getFullYear()}/${String(today.getMonth() + 1).padStart(2, '0')}/${String(today.getDate()).padStart(2, '0')}`;
+      const targetFormatted = `${targetDate.getFullYear()}/${String(targetDate.getMonth() + 1).padStart(2, '0')}/${String(targetDate.getDate()).padStart(2, '0')}`;
+      
+      document.getElementById('disp-today').innerText = todayFormatted;
+      document.getElementById('input-payday').value = appData.payday;
+      document.getElementById('disp-target-date').innerText = `次回給料日: ${targetFormatted}`;
+      document.getElementById('disp-remain-days').innerText = remainDays;
+      document.querySelectorAll('.sync-remain-days').forEach(el => el.innerText = remainDays);
+
+      document.getElementById('input-savings').value = appData.savings;
+      document.getElementById('check-exclude-credit').checked = appData.excludeCredit;
+
+      // 変動費入力
+      const v = appData.variable;
+      document.getElementById('v-food-day').value = v.foodDayRate;
+      document.getElementById('v-food-week').value = v.foodWeekRate;
+      document.getElementById('v-ent-cost').value = v.entertainmentRate;
+      document.getElementById('v-ent-count').value = v.entertainmentCount;
+      
+      document.getElementById('v-trans1-cost').value = v.trans1Rate;
+      document.getElementById('v-trans1-count').value = v.trans1Count;
+      document.getElementById('v-trans2-cost').value = v.trans2Rate;
+      document.getElementById('v-trans2-count').value = v.trans2Count;
+      document.getElementById('v-trans3-cost').value = v.trans3Rate;
+      document.getElementById('v-trans3-count').value = v.trans3Count;
+
+      // 変動費小計計算
+      const calcFoodDay = Math.round(v.foodDayRate * remainDays);
+      const calcFoodWeek = Math.round(v.foodWeekRate * (remainDays / 7));
+      const calcEnt = Math.round(v.entertainmentRate * v.entertainmentCount);
+      const calcTrans1 = Math.round(v.trans1Rate * v.trans1Count);
+      const calcTrans2 = Math.round(v.trans2Rate * v.trans2Count);
+      const calcTrans3 = Math.round(v.trans3Rate * v.trans3Count);
+
+      document.getElementById('calc-food-day').innerText = '¥' + calcFoodDay.toLocaleString();
+      document.getElementById('calc-food-week').innerText = '¥' + calcFoodWeek.toLocaleString();
+      document.getElementById('calc-ent-cost').innerText = '¥' + calcEnt.toLocaleString();
+      document.getElementById('calc-trans1-cost').innerText = '¥' + calcTrans1.toLocaleString();
+      document.getElementById('calc-trans2-cost').innerText = '¥' + calcTrans2.toLocaleString();
+      document.getElementById('calc-trans3-cost').innerText = '¥' + calcTrans3.toLocaleString();
+
+      const varSubtotal = calcFoodDay + calcFoodWeek + calcEnt + calcTrans1 + calcTrans2 + calcTrans3;
+      document.getElementById('disp-variable-subtotal').innerText = '¥' + varSubtotal.toLocaleString();
+
+      // 固定費レンダリング（カード型）
+      const fixedContainer = document.getElementById('fixed-container');
+      fixedContainer.innerHTML = '';
+      let fixedSubtotal = 0;
+
+      appData.fixedList.forEach((item, index) => {
+        const inCycle = isDueWithinCycle(item.dueDay, today, targetDate);
+        if (inCycle) {
+          fixedSubtotal += Number(item.amount) || 0;
+        }
+
+        const card = document.createElement('div');
+        card.className = `p-2.5 rounded-lg border transition ${inCycle ? 'bg-white border-slate-200' : 'bg-slate-50/70 border-slate-100 opacity-60'}`;
+        card.innerHTML = `
+          <div class="flex items-center justify-between mb-1.5">
+            <input type="text" value="${escapeHtml(item.name)}" data-idx="${index}" data-field="name" class="fixed-input font-medium text-slate-800 bg-transparent border-b border-dashed border-slate-300 focus:border-indigo-500 focus:outline-none w-2/3" placeholder="項目名">
+            <div class="flex items-center space-x-1.5">
+              ${inCycle 
+                ? `<span class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800">今回対象</span>` 
+                : `<span class="px-1.5 py-0.5 rounded text-[10px] font-medium bg-slate-200 text-slate-500">次回以降</span>`}
+              <button type="button" onclick="deleteFixedItem(${index})" class="text-slate-300 hover:text-rose-500 p-1" title="削除">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+              </button>
+            </div>
+          </div>
+          <div class="flex items-center justify-between text-xs pt-1">
+            <div class="flex items-center space-x-1">
+              <span class="text-slate-400 text-[11px]">支払日:</span>
+              <input type="number" min="1" max="31" inputmode="numeric" value="${item.dueDay}" data-idx="${index}" data-field="dueDay" class="fixed-input w-10 text-center font-mono bg-slate-100 rounded px-1 py-0.5 border border-slate-200">
+              <span class="text-slate-500 text-[11px]">日</span>
+            </div>
+            <div class="flex items-center space-x-1">
+              <span class="text-slate-400 font-mono">¥</span>
+              <input type="number" inputmode="numeric" value="${item.amount}" data-idx="${index}" data-field="amount" class="fixed-input w-24 text-right font-mono font-bold text-slate-900 border border-slate-200 rounded px-2 py-0.5 bg-white">
+            </div>
+          </div>
+        `;
+        fixedContainer.appendChild(card);
+      });
+      document.getElementById('disp-fixed-subtotal').innerText = '¥' + fixedSubtotal.toLocaleString();
+
+      // 都度予定レンダリング（カード型）
+      const specialContainer = document.getElementById('special-container');
+      specialContainer.innerHTML = '';
+      let specialTotal = 0;
+      let specialCashTotal = 0;
+
+      appData.specialList.forEach((item, index) => {
+        const amt = Number(item.amount) || 0;
+        specialTotal += amt;
+        if (item.paymentMethod === 'cash') {
+          specialCashTotal += amt;
+        }
+
+        const isCredit = item.paymentMethod === 'credit';
+        const card = document.createElement('div');
+        card.className = 'p-2.5 rounded-lg border border-slate-200 bg-white transition';
+        card.innerHTML = `
+          <div class="flex items-center justify-between mb-1.5">
+            <input type="text" value="${escapeHtml(item.name)}" data-idx="${index}" data-field="name" class="special-input font-medium text-slate-800 bg-transparent border-b border-dashed border-slate-300 focus:border-indigo-500 focus:outline-none w-2/3" placeholder="予定・品名">
+            <button type="button" onclick="deleteSpecialItem(${index})" class="text-slate-300 hover:text-rose-500 p-1" title="削除">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+            </button>
+          </div>
+          <div class="flex items-center justify-between text-xs pt-1">
+            <select data-idx="${index}" data-field="paymentMethod" class="special-input text-xs rounded px-2 py-1 font-medium border border-slate-200 ${isCredit ? 'text-purple-700 bg-purple-50' : 'text-slate-700 bg-slate-100'}">
+              <option value="cash" ${item.paymentMethod === 'cash' ? 'selected' : ''}>現金</option>
+              <option value="credit" ${item.paymentMethod === 'credit' ? 'selected' : ''}>クレカ</option>
+            </select>
+            <div class="flex items-center space-x-1">
+              <span class="text-slate-400 font-mono">¥</span>
+              <input type="number" inputmode="numeric" value="${item.amount}" data-idx="${index}" data-field="amount" class="special-input w-24 text-right font-mono font-bold text-slate-900 border border-slate-200 rounded px-2 py-0.5 bg-white">
+            </div>
+          </div>
+        `;
+        specialContainer.appendChild(card);
+      });
+      document.getElementById('disp-special-subtotal').innerText = '¥' + specialTotal.toLocaleString();
+
+      // サマリー算出
+      const activeSpecialExpense = appData.excludeCredit ? specialCashTotal : specialTotal;
+      const totalExpense = varSubtotal + fixedSubtotal + activeSpecialExpense;
+      const savings = Number(appData.savings) || 0;
+      const freeBudget = savings - totalExpense;
+
+      document.getElementById('disp-total-expense').innerText = '¥' + totalExpense.toLocaleString();
+      
+      const freeBudgetEl = document.getElementById('disp-free-budget');
+      freeBudgetEl.innerText = '¥' + freeBudget.toLocaleString();
+
+      const badgeEl = document.getElementById('badge-status');
+      if (freeBudget < 0) {
+        freeBudgetEl.className = 'text-2xl font-black font-mono tracking-tight text-rose-400 leading-none';
+        badgeEl.className = 'text-[9px] px-1.5 py-0.2 rounded-full font-bold bg-rose-500/20 text-rose-300 border border-rose-500/30';
+        badgeEl.innerText = '予算超過 (赤字)';
+      } else if (freeBudget < 30000) {
+        freeBudgetEl.className = 'text-2xl font-black font-mono tracking-tight text-amber-300 leading-none';
+        badgeEl.className = 'text-[9px] px-1.5 py-0.2 rounded-full font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30';
+        badgeEl.innerText = '注意 (残少)';
+      } else {
+        freeBudgetEl.className = 'text-2xl font-black font-mono tracking-tight text-emerald-400 leading-none';
+        badgeEl.className = 'text-[9px] px-1.5 py-0.2 rounded-full font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30';
+        badgeEl.innerText = '安全圏 (黒字)';
+      }
+
+      updateChart(varSubtotal, fixedSubtotal, activeSpecialExpense, totalExpense);
+      persistData();
+    }
+
+    function updateChart(varVal, fixVal, planVal, total) {
+      document.getElementById('chart-total-text').innerText = `計 ¥${total.toLocaleString()}`;
+
+      const varRatio = total > 0 ? Math.round((varVal / total) * 100) : 0;
+      const fixRatio = total > 0 ? Math.round((fixVal / total) * 100) : 0;
+      const planRatio = total > 0 ? Math.max(0, 100 - varRatio - fixRatio) : 0;
+
+      document.getElementById('ratio-var').innerText = `${varRatio}%`;
+      document.getElementById('ratio-fix').innerText = `${fixRatio}%`;
+      document.getElementById('ratio-plan').innerText = `${planRatio}%`;
+
+      const ctx = document.getElementById('expenseChart').getContext('2d');
+      const chartData = (total === 0) ? [1] : [varVal, fixVal, planVal];
+      const chartColors = (total === 0) ? ['#e2e8f0'] : ['#10b981', '#3b82f6', '#a855f7'];
+
+      if (expenseChart) {
+        expenseChart.data.datasets[0].data = chartData;
+        expenseChart.data.datasets[0].backgroundColor = chartColors;
+        expenseChart.update();
+      } else {
+        expenseChart = new Chart(ctx, {
+          type: 'doughnut',
+          data: {
+            labels: ['変動費', '固定費', '都度予定'],
+            datasets: [{
+              data: chartData,
+              backgroundColor: chartColors,
+              borderWidth: 2,
+              borderColor: '#ffffff',
+              hoverOffset: 4
+            }]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+              legend: { display: false }
+            },
+            cutout: '70%'
+          }
+        });
+      }
+    }
+
+    function escapeHtml(str) {
+      return (str || '').replace(/[&<>"']/g, function(m) {
+        return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' }[m];
+      });
+    }
+
+    function setupEventListeners() {
+      document.getElementById('input-payday').addEventListener('input', (e) => {
+        let val = parseInt(e.target.value) || 1;
+        if (val < 1) val = 1;
+        if (val > 31) val = 31;
+        appData.payday = val;
+        renderApp();
+      });
+
+      document.getElementById('input-savings').addEventListener('input', (e) => {
+        appData.savings = Math.max(0, parseInt(e.target.value) || 0);
+        renderApp();
+      });
+
+      document.getElementById('check-exclude-credit').addEventListener('change', (e) => {
+        appData.excludeCredit = e.target.checked;
+        renderApp();
+      });
+
+      const varMap = [
+        { id: 'v-food-day', key: 'foodDayRate' },
+        { id: 'v-food-week', key: 'foodWeekRate' },
+        { id: 'v-ent-cost', key: 'entertainmentRate' },
+        { id: 'v-ent-count', key: 'entertainmentCount' },
+        { id: 'v-trans1-cost', key: 'trans1Rate' },
+        { id: 'v-trans1-count', key: 'trans1Count' },
+        { id: 'v-trans2-cost', key: 'trans2Rate' },
+        { id: 'v-trans2-count', key: 'trans2Count' },
+        { id: 'v-trans3-cost', key: 'trans3Rate' },
+        { id: 'v-trans3-count', key: 'trans3Count' },
+      ];
+
+      varMap.forEach(item => {
+        document.getElementById(item.id).addEventListener('input', (e) => {
+          appData.variable[item.key] = Math.max(0, parseFloat(e.target.value) || 0);
+          renderApp();
+        });
+      });
+
+      document.getElementById('fixed-container').addEventListener('input', (e) => {
+        if (!e.target.classList.contains('fixed-input')) return;
+        const idx = parseInt(e.target.dataset.idx);
+        const field = e.target.dataset.field;
+        let val = e.target.value;
+        if (field === 'amount') val = Math.max(0, parseInt(val) || 0);
+        if (field === 'dueDay') val = Math.max(1, Math.min(31, parseInt(val) || 1));
+        appData.fixedList[idx][field] = val;
+        renderApp();
+      });
+
+      document.getElementById('special-container').addEventListener('input', (e) => {
+        if (!e.target.classList.contains('special-input')) return;
+        const idx = parseInt(e.target.dataset.idx);
+        const field = e.target.dataset.field;
+        let val = e.target.value;
+        if (field === 'amount') val = Math.max(0, parseInt(val) || 0);
+        appData.specialList[idx][field] = val;
+        renderApp();
+      });
+
+      document.getElementById('btn-add-fixed').addEventListener('click', () => {
+        appData.fixedList.push({
+          id: Date.now(),
+          name: '新規固定費',
+          amount: 0,
+          dueDay: 1
+        });
+        renderApp();
+      });
+
+      document.getElementById('btn-add-special').addEventListener('click', () => {
+        appData.specialList.push({
+          id: Date.now(),
+          name: '購入予定品',
+          amount: 0,
+          paymentMethod: 'cash'
+        });
+        renderApp();
+      });
+
+      document.getElementById('btn-reset').addEventListener('click', () => {
+        appData = JSON.parse(JSON.stringify(DEFAULT_DATA));
+        renderApp();
+      });
+    }
+
+    window.deleteFixedItem = function(index) {
+      appData.fixedList.splice(index, 1);
+      renderApp();
+    };
+
+    window.deleteSpecialItem = function(index) {
+      appData.specialList.splice(index, 1);
+      renderApp();
+    };
+
+    window.addEventListener('DOMContentLoaded', () => {
+      loadSavedData();
+      setupEventListeners();
+      renderApp();
+    });
+  </script>
+</body>
+</html>

@@ -393,73 +393,24 @@
       return candidate.getTime() >= today.getTime() && candidate.getTime() <= targetDate.getTime();
     }
 
-    function renderApp() {
-      const { today, targetDate, remainDays } = calculateDates();
-
-      const todayFormatted = `${today.getFullYear()}/${String(today.getMonth() + 1).padStart(2, '0')}/${String(today.getDate()).padStart(2, '0')}`;
-      const targetFormatted = `${targetDate.getFullYear()}/${String(targetDate.getMonth() + 1).padStart(2, '0')}/${String(targetDate.getDate()).padStart(2, '0')}`;
-      
-      document.getElementById('disp-today').innerText = todayFormatted;
-      document.getElementById('input-payday').value = appData.payday;
-      document.getElementById('disp-target-date').innerText = `次回給料日: ${targetFormatted}`;
-      document.getElementById('disp-remain-days').innerText = remainDays;
-      document.querySelectorAll('.sync-remain-days').forEach(el => el.innerText = remainDays);
-
-      document.getElementById('input-savings').value = appData.savings;
-      document.getElementById('check-exclude-credit').checked = appData.excludeCredit;
-
-      // 変動費入力
-      const v = appData.variable;
-      document.getElementById('v-food-day').value = v.foodDayRate;
-      document.getElementById('v-food-week').value = v.foodWeekRate;
-      document.getElementById('v-ent-cost').value = v.entertainmentRate;
-      document.getElementById('v-ent-count').value = v.entertainmentCount;
-      
-      document.getElementById('v-trans1-cost').value = v.trans1Rate;
-      document.getElementById('v-trans1-count').value = v.trans1Count;
-      document.getElementById('v-trans2-cost').value = v.trans2Rate;
-      document.getElementById('v-trans2-count').value = v.trans2Count;
-      document.getElementById('v-trans3-cost').value = v.trans3Rate;
-      document.getElementById('v-trans3-count').value = v.trans3Count;
-
-      // 変動費小計計算
-      const calcFoodDay = Math.round(v.foodDayRate * remainDays);
-      const calcFoodWeek = Math.round(v.foodWeekRate * (remainDays / 7));
-      const calcEnt = Math.round(v.entertainmentRate * v.entertainmentCount);
-      const calcTrans1 = Math.round(v.trans1Rate * v.trans1Count);
-      const calcTrans2 = Math.round(v.trans2Rate * v.trans2Count);
-      const calcTrans3 = Math.round(v.trans3Rate * v.trans3Count);
-
-      document.getElementById('calc-food-day').innerText = '¥' + calcFoodDay.toLocaleString();
-      document.getElementById('calc-food-week').innerText = '¥' + calcFoodWeek.toLocaleString();
-      document.getElementById('calc-ent-cost').innerText = '¥' + calcEnt.toLocaleString();
-      document.getElementById('calc-trans1-cost').innerText = '¥' + calcTrans1.toLocaleString();
-      document.getElementById('calc-trans2-cost').innerText = '¥' + calcTrans2.toLocaleString();
-      document.getElementById('calc-trans3-cost').innerText = '¥' + calcTrans3.toLocaleString();
-
-      const varSubtotal = calcFoodDay + calcFoodWeek + calcEnt + calcTrans1 + calcTrans2 + calcTrans3;
-      document.getElementById('disp-variable-subtotal').innerText = '¥' + varSubtotal.toLocaleString();
-
-      // 固定費レンダリング（カード型）
+    // リスト構造全体の再構築（初期表示・追加・削除・期日変更時のみ実行）
+    function renderFixedCards() {
+      const { today, targetDate } = calculateDates();
       const fixedContainer = document.getElementById('fixed-container');
       fixedContainer.innerHTML = '';
-      let fixedSubtotal = 0;
 
       appData.fixedList.forEach((item, index) => {
         const inCycle = isDueWithinCycle(item.dueDay, today, targetDate);
-        if (inCycle) {
-          fixedSubtotal += Number(item.amount) || 0;
-        }
-
         const card = document.createElement('div');
+        card.id = `fixed-card-${index}`;
         card.className = `p-2.5 rounded-lg border transition ${inCycle ? 'bg-white border-slate-200' : 'bg-slate-50/70 border-slate-100 opacity-60'}`;
         card.innerHTML = `
           <div class="flex items-center justify-between mb-1.5">
             <input type="text" value="${escapeHtml(item.name)}" data-idx="${index}" data-field="name" class="fixed-input font-medium text-slate-800 bg-transparent border-b border-dashed border-slate-300 focus:border-indigo-500 focus:outline-none w-2/3" placeholder="項目名">
             <div class="flex items-center space-x-1.5">
-              ${inCycle 
-                ? `<span class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800">今回対象</span>` 
-                : `<span class="px-1.5 py-0.5 rounded text-[10px] font-medium bg-slate-200 text-slate-500">次回以降</span>`}
+              <span id="fixed-status-${index}" class="px-1.5 py-0.5 rounded text-[10px] font-bold ${inCycle ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-200 text-slate-500'}">
+                ${inCycle ? '今回対象' : '次回以降'}
+              </span>
               <button type="button" onclick="deleteFixedItem(${index})" class="text-slate-300 hover:text-rose-500 p-1" title="削除">
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
               </button>
@@ -479,23 +430,16 @@
         `;
         fixedContainer.appendChild(card);
       });
-      document.getElementById('disp-fixed-subtotal').innerText = '¥' + fixedSubtotal.toLocaleString();
+    }
 
-      // 都度予定レンダリング（カード型）
+    function renderSpecialCards() {
       const specialContainer = document.getElementById('special-container');
       specialContainer.innerHTML = '';
-      let specialTotal = 0;
-      let specialCashTotal = 0;
 
       appData.specialList.forEach((item, index) => {
-        const amt = Number(item.amount) || 0;
-        specialTotal += amt;
-        if (item.paymentMethod === 'cash') {
-          specialCashTotal += amt;
-        }
-
         const isCredit = item.paymentMethod === 'credit';
         const card = document.createElement('div');
+        card.id = `special-card-${index}`;
         card.className = 'p-2.5 rounded-lg border border-slate-200 bg-white transition';
         card.innerHTML = `
           <div class="flex items-center justify-between mb-1.5">
@@ -516,6 +460,70 @@
           </div>
         `;
         specialContainer.appendChild(card);
+      });
+    }
+
+    // 計算とサマリー・グラフの更新のみを行う関数（DOM再構築をしないため入力が切れない）
+    function calculateAndRenderSummary() {
+      const { today, targetDate, remainDays } = calculateDates();
+
+      const todayFormatted = `${today.getFullYear()}/${String(today.getMonth() + 1).padStart(2, '0')}/${String(today.getDate()).padStart(2, '0')}`;
+      const targetFormatted = `${targetDate.getFullYear()}/${String(targetDate.getMonth() + 1).padStart(2, '0')}/${String(targetDate.getDate()).padStart(2, '0')}`;
+      
+      document.getElementById('disp-today').innerText = todayFormatted;
+      document.getElementById('input-payday').value = appData.payday;
+      document.getElementById('disp-target-date').innerText = `次回給料日: ${targetFormatted}`;
+      document.getElementById('disp-remain-days').innerText = remainDays;
+      document.querySelectorAll('.sync-remain-days').forEach(el => el.innerText = remainDays);
+
+      document.getElementById('check-exclude-credit').checked = appData.excludeCredit;
+
+      // 変動費小計計算
+      const v = appData.variable;
+      const calcFoodDay = Math.round(v.foodDayRate * remainDays);
+      const calcFoodWeek = Math.round(v.foodWeekRate * (remainDays / 7));
+      const calcEnt = Math.round(v.entertainmentRate * v.entertainmentCount);
+      const calcTrans1 = Math.round(v.trans1Rate * v.trans1Count);
+      const calcTrans2 = Math.round(v.trans2Rate * v.trans2Count);
+      const calcTrans3 = Math.round(v.trans3Rate * v.trans3Count);
+
+      document.getElementById('calc-food-day').innerText = '¥' + calcFoodDay.toLocaleString();
+      document.getElementById('calc-food-week').innerText = '¥' + calcFoodWeek.toLocaleString();
+      document.getElementById('calc-ent-cost').innerText = '¥' + calcEnt.toLocaleString();
+      document.getElementById('calc-trans1-cost').innerText = '¥' + calcTrans1.toLocaleString();
+      document.getElementById('calc-trans2-cost').innerText = '¥' + calcTrans2.toLocaleString();
+      document.getElementById('calc-trans3-cost').innerText = '¥' + calcTrans3.toLocaleString();
+
+      const varSubtotal = calcFoodDay + calcFoodWeek + calcEnt + calcTrans1 + calcTrans2 + calcTrans3;
+      document.getElementById('disp-variable-subtotal').innerText = '¥' + varSubtotal.toLocaleString();
+
+      // 固定費の計算
+      let fixedSubtotal = 0;
+      appData.fixedList.forEach((item, index) => {
+        const inCycle = isDueWithinCycle(item.dueDay, today, targetDate);
+        if (inCycle) {
+          fixedSubtotal += Number(item.amount) || 0;
+        }
+        // ステータス表示の個別更新
+        const statusEl = document.getElementById(`fixed-status-${index}`);
+        const cardEl = document.getElementById(`fixed-card-${index}`);
+        if (statusEl && cardEl) {
+          statusEl.className = `px-1.5 py-0.5 rounded text-[10px] font-bold ${inCycle ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-200 text-slate-500'}`;
+          statusEl.innerText = inCycle ? '今回対象' : '次回以降';
+          cardEl.className = `p-2.5 rounded-lg border transition ${inCycle ? 'bg-white border-slate-200' : 'bg-slate-50/70 border-slate-100 opacity-60'}`;
+        }
+      });
+      document.getElementById('disp-fixed-subtotal').innerText = '¥' + fixedSubtotal.toLocaleString();
+
+      // 都度予定の計算
+      let specialTotal = 0;
+      let specialCashTotal = 0;
+      appData.specialList.forEach(item => {
+        const amt = Number(item.amount) || 0;
+        specialTotal += amt;
+        if (item.paymentMethod === 'cash') {
+          specialCashTotal += amt;
+        }
       });
       document.getElementById('disp-special-subtotal').innerText = '¥' + specialTotal.toLocaleString();
 
@@ -599,23 +607,38 @@
       });
     }
 
+    function syncStaticInputs() {
+      document.getElementById('input-savings').value = appData.savings;
+      const v = appData.variable;
+      document.getElementById('v-food-day').value = v.foodDayRate;
+      document.getElementById('v-food-week').value = v.foodWeekRate;
+      document.getElementById('v-ent-cost').value = v.entertainmentRate;
+      document.getElementById('v-ent-count').value = v.entertainmentCount;
+      document.getElementById('v-trans1-cost').value = v.trans1Rate;
+      document.getElementById('v-trans1-count').value = v.trans1Count;
+      document.getElementById('v-trans2-cost').value = v.trans2Rate;
+      document.getElementById('v-trans2-count').value = v.trans2Count;
+      document.getElementById('v-trans3-cost').value = v.trans3Rate;
+      document.getElementById('v-trans3-count').value = v.trans3Count;
+    }
+
     function setupEventListeners() {
       document.getElementById('input-payday').addEventListener('input', (e) => {
         let val = parseInt(e.target.value) || 1;
         if (val < 1) val = 1;
         if (val > 31) val = 31;
         appData.payday = val;
-        renderApp();
+        calculateAndRenderSummary();
       });
 
       document.getElementById('input-savings').addEventListener('input', (e) => {
         appData.savings = Math.max(0, parseInt(e.target.value) || 0);
-        renderApp();
+        calculateAndRenderSummary();
       });
 
       document.getElementById('check-exclude-credit').addEventListener('change', (e) => {
         appData.excludeCredit = e.target.checked;
-        renderApp();
+        calculateAndRenderSummary();
       });
 
       const varMap = [
@@ -634,10 +657,11 @@
       varMap.forEach(item => {
         document.getElementById(item.id).addEventListener('input', (e) => {
           appData.variable[item.key] = Math.max(0, parseFloat(e.target.value) || 0);
-          renderApp();
+          calculateAndRenderSummary();
         });
       });
 
+      // 固定費カード内の入力（DOMを破棄しないためフォーカスが外れない）
       document.getElementById('fixed-container').addEventListener('input', (e) => {
         if (!e.target.classList.contains('fixed-input')) return;
         const idx = parseInt(e.target.dataset.idx);
@@ -646,9 +670,10 @@
         if (field === 'amount') val = Math.max(0, parseInt(val) || 0);
         if (field === 'dueDay') val = Math.max(1, Math.min(31, parseInt(val) || 1));
         appData.fixedList[idx][field] = val;
-        renderApp();
+        calculateAndRenderSummary();
       });
 
+      // 都度予定カード内の入力
       document.getElementById('special-container').addEventListener('input', (e) => {
         if (!e.target.classList.contains('special-input')) return;
         const idx = parseInt(e.target.dataset.idx);
@@ -656,9 +681,20 @@
         let val = e.target.value;
         if (field === 'amount') val = Math.max(0, parseInt(val) || 0);
         appData.specialList[idx][field] = val;
-        renderApp();
+        calculateAndRenderSummary();
       });
 
+      // セレクトボックス変更時
+      document.getElementById('special-container').addEventListener('change', (e) => {
+        if (e.target.dataset.field === 'paymentMethod') {
+          const idx = parseInt(e.target.dataset.idx);
+          appData.specialList[idx].paymentMethod = e.target.value;
+          e.target.className = `special-input text-xs rounded px-2 py-1 font-medium border border-slate-200 ${e.target.value === 'credit' ? 'text-purple-700 bg-purple-50' : 'text-slate-700 bg-slate-100'}`;
+          calculateAndRenderSummary();
+        }
+      });
+
+      // 項目追加時は要素を作成して再構築
       document.getElementById('btn-add-fixed').addEventListener('click', () => {
         appData.fixedList.push({
           id: Date.now(),
@@ -666,7 +702,8 @@
           amount: 0,
           dueDay: 1
         });
-        renderApp();
+        renderFixedCards();
+        calculateAndRenderSummary();
       });
 
       document.getElementById('btn-add-special').addEventListener('click', () => {
@@ -676,29 +713,38 @@
           amount: 0,
           paymentMethod: 'cash'
         });
-        renderApp();
+        renderSpecialCards();
+        calculateAndRenderSummary();
       });
 
       document.getElementById('btn-reset').addEventListener('click', () => {
         appData = JSON.parse(JSON.stringify(DEFAULT_DATA));
-        renderApp();
+        syncStaticInputs();
+        renderFixedCards();
+        renderSpecialCards();
+        calculateAndRenderSummary();
       });
     }
 
     window.deleteFixedItem = function(index) {
       appData.fixedList.splice(index, 1);
-      renderApp();
+      renderFixedCards();
+      calculateAndRenderSummary();
     };
 
     window.deleteSpecialItem = function(index) {
       appData.specialList.splice(index, 1);
-      renderApp();
+      renderSpecialCards();
+      calculateAndRenderSummary();
     };
 
     window.addEventListener('DOMContentLoaded', () => {
       loadSavedData();
+      syncStaticInputs();
+      renderFixedCards();
+      renderSpecialCards();
       setupEventListeners();
-      renderApp();
+      calculateAndRenderSummary();
     });
   </script>
 </body>
